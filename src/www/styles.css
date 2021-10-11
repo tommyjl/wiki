@@ -1,0 +1,29 @@
+:root {
+  --fg-color: #000000;
+  --bg-color: tomato;
+
+  --padding-1: 1rem;
+  --padding-2: 1rem;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.palaver-header {
+  color: var(--fg-color);
+  background-color: var(--bg-color);
+  padding: var(--padding-1);
+}
+.palaver-header a,
+.palaver-header a:hover,
+.palaver-header a:visited {
+  color: var(--fg-color);
+  text-decoration: none;
+}
+
+.palaver-main {
+  color: var(--fg-color);
+  padding: var(--padding-1);
+}
