@@ -2,11 +2,8 @@
 
 use crate::article_provider::{ArticleProvider, LocalArticleProvider};
 use crate::response::{Css, Markdown};
-use axum::{extract::Path, handler::get, http::HeaderMap, response::Html, Router};
-use http::{
-    header::{HeaderName, HeaderValue},
-    StatusCode,
-};
+use axum::{extract::Path, handler::get, response::Html, Router};
+use http::StatusCode;
 use pulldown_cmark::{html, Parser};
 use std::net::SocketAddr;
 use std::path::PathBuf;
