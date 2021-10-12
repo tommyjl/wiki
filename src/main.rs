@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use crate::article_provider::{ArticleProvider, LocalArticleProvider};
-use axum::{extract::Path, handler::get, http::HeaderMap, Router};
+use crate::response::{Css, Markdown};
+use axum::{extract::Path, handler::get, http::HeaderMap, response::Html, Router};
 use http::{
     header::{HeaderName, HeaderValue},
     StatusCode,
@@ -15,6 +16,8 @@ pub struct PalaverConfig {
 }
 
 mod article_provider;
+
+mod response;
 
 #[tokio::main]
 async fn main() {
@@ -42,8 +45,7 @@ async fn main() {
 
 fn render_html(body: &str) -> String {
     let html = include_str!("www/index.html");
-    let html = html.replace("{{main}}", body);
-    html
+    html.replace("{{main}}", body)
 }
 
 fn render_html_from_markdown(md: &str) -> String {
@@ -54,13 +56,7 @@ fn render_html_from_markdown(md: &str) -> String {
     render_html(&html_output)
 }
 
-async fn list_articles() -> (StatusCode, HeaderMap, String) {
-    let mut headers = HeaderMap::with_capacity(10);
-    headers.insert(
-        HeaderName::from_static("content-type"),
-        HeaderValue::from_static("text/html"),
-    );
-
+async fn list_articles() -> Html<String> {
     let provider = LocalArticleProvider::new("articles".into());
     let articles = provider.list_articles().await.unwrap_or_default();
 
@@ -76,49 +72,38 @@ async fn list_articles() -> (StatusCode, HeaderMap, String) {
     }
     let html = render_html(&html_body);
 
-    (StatusCode::OK, headers, html)
+    Html(html)
 }
 
-async fn show_article(Path(article_id): Path<String>) -> (HeaderMap, String) {
-    let mut headers = HeaderMap::with_capacity(10);
-    headers.insert(
-        HeaderName::from_static("content-type"),
-        HeaderValue::from_static("text/html"),
-    );
+async fn show_article(Path(article_id): Path<String>) -> Html<String> {
+    let provider = LocalArticleProvider::new("articles".into());
+    let article = provider.show_article(&article_id).await;
 
+    // TODO: Link to /wiki/:id/edit
+    let html_body = article.unwrap_or_else(|()| "Not found".to_string());
+    let html = render_html_from_markdown(&html_body);
+
+    Html(html)
+}
+
+async fn show_raw_article(Path(article_id): Path<String>) -> (StatusCode, Markdown<String>) {
+    let provider = LocalArticleProvider::new("articles".into());
+    match provider.show_article(&article_id).await {
+        Ok(article) => (StatusCode::OK, Markdown(article)),
+        Err(_) => (StatusCode::NOT_FOUND, Markdown(String::new())),
+    }
+}
+
+async fn edit_article(Path(article_id): Path<String>) -> Html<String> {
     let provider = LocalArticleProvider::new("articles".into());
     let article = provider.show_article(&article_id).await;
 
     let html_body = article.unwrap_or_else(|()| "Not found".to_string());
     let html = render_html_from_markdown(&html_body);
 
-    (headers, html)
+    Html(html)
 }
 
-async fn show_raw_article(Path(article_id): Path<String>) -> (StatusCode, HeaderMap, String) {
-    let mut headers = HeaderMap::with_capacity(10);
-    headers.insert(
-        HeaderName::from_static("content-type"),
-        HeaderValue::from_static("text/markdown"),
-    );
-
-    let provider = LocalArticleProvider::new("articles".into());
-    match provider.show_article(&article_id).await {
-        Ok(article) => (StatusCode::OK, headers, article),
-        Err(_) => (StatusCode::NOT_FOUND, headers, String::new()),
-    }
-}
-
-async fn edit_article(Path(_article_id): Path<String>) -> &'static str {
-    todo!()
-}
-
-async fn stylesheet() -> (HeaderMap, &'static str) {
-    let css = include_str!("www/styles.css");
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        HeaderName::from_static("content-type"),
-        HeaderValue::from_static("text/css"),
-    );
-    (headers, css)
+async fn stylesheet() -> Css<&'static str> {
+    Css(include_str!("www/styles.css"))
 }

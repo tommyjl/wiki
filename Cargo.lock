@@ -305,7 +305,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "bytes",
  "http",
+ "http-body",
  "hyper",
  "pulldown-cmark",
  "tokio",

@@ -6,7 +6,9 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1.51"
 axum = "0.2.8"
+bytes = "1.1.0"
 http = "0.2.5"
+http-body = "0.4.3"
 hyper = "0.14.13"
 pulldown-cmark = { version = "0.8", default-features = false, features = ["simd"] }
 tokio = { version = "1", features = ["full"] }
