@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::fs::read_to_string;
 
-pub struct ArticleInfo {
-    title: String,
-}
+pub type DynArticleProvider = Arc<dyn ArticleProvider + Send + Sync>;
 
 #[async_trait]
 pub trait ArticleProvider {
