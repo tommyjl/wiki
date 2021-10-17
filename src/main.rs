@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use crate::article_provider::{ArticleProvider, DynArticleProvider, LocalArticleProvider};
+use crate::article_provider::{DynArticleProvider, LocalArticleProvider};
 use crate::response::{Css, Markdown};
 use axum::{
     extract::{Extension, Path},
-    handler::get,
-    response::Html,
+    handler::{get, Handler},
+    response::{Html, IntoResponse},
     AddExtensionLayer, Router,
 };
 use handlebars::Handlebars;
@@ -25,21 +25,30 @@ const BODY: &str = "main";
 pub struct WikiConfig {
     title: String,
     article_dir: PathBuf,
+    not_found_msg: String,
 }
 
 #[derive(serde::Serialize)]
 pub struct Page<'a> {
     title: &'a str,
-    main: &'a str,
+    main: Option<&'a str>,
+    links: Vec<PageLink>,
+}
+
+// TODO: Non-heap strings?
+#[derive(Debug, serde::Serialize)]
+pub struct PageLink {
+    href: String,
+    text: String,
 }
 
 #[tokio::main]
 async fn main() {
-    // TODO: Render html title and header from config
     // TODO: Get config from environment
     let config = WikiConfig {
         title: "Tommyjl Wiki".into(),
         article_dir: "articles".into(),
+        not_found_msg: "404 NotFound".into(),
     };
 
     // TODO: 404 page
@@ -52,6 +61,8 @@ async fn main() {
         .layer(AddExtensionLayer::new(init_handlebars()))
         .layer(AddExtensionLayer::new(init_article_provider(&config)))
         .layer(AddExtensionLayer::new(config));
+
+    let app = app.or(handle_not_found.into_service());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
@@ -75,54 +86,59 @@ fn init_handlebars() -> Handlebars<'static> {
 }
 
 // TODO: The example used Arc. Investigate if we should use that here.
-fn render_html(handlebars: &Handlebars, body: &str) -> String {
+fn render_html(
+    config: &WikiConfig,
+    handlebars: &Handlebars,
+    body: Option<&str>,
+    links: Option<Vec<PageLink>>,
+) -> String {
     let data = Page {
-        title: "Tommyjl Wiki",
+        title: &config.title,
         main: body,
+        links: links.unwrap_or_else(Vec::new),
     };
     handlebars.render(TEMPLATE, &data).unwrap()
 }
 
-fn render_html_from_markdown(handlebars: &Handlebars, md: &str) -> String {
+fn render_html_from_markdown(config: &WikiConfig, handlebars: &Handlebars, md: &str) -> String {
     let mut html_output = String::new();
     let parser = Parser::new(md);
     html::push_html(&mut html_output, parser);
 
-    render_html(handlebars, &html_output)
+    render_html(config, handlebars, Some(&html_output), None)
 }
 
 async fn list_articles(
+    Extension(config): Extension<WikiConfig>,
     Extension(handlebars): Extension<Handlebars<'_>>,
     Extension(provider): Extension<DynArticleProvider>,
 ) -> Html<String> {
     let articles = provider.list_articles().await.unwrap_or_default();
 
-    let mut html_body = String::new();
-    for article in articles {
-        html_body.push_str(&format!(
-            "<li><a href=\"wiki/{}\">{}</a></li>\n",
-            article, article
-        ));
-    }
-    if html_body.is_empty() {
-        html_body.push_str("No articles\n");
-    }
-    let html = render_html(&handlebars, &html_body);
+    let html_body = articles.is_empty().then(|| "No articles");
+
+    let links = articles
+        .iter()
+        .map(|a| PageLink {
+            href: format!("wiki/{}", a),
+            text: a.to_string(),
+        })
+        .collect();
+
+    let html = render_html(&config, &handlebars, html_body, Some(links));
 
     Html(html)
 }
 
 async fn show_article(
     Path(article_id): Path<String>,
+    Extension(config): Extension<WikiConfig>,
     Extension(handlebars): Extension<Handlebars<'_>>,
     Extension(provider): Extension<DynArticleProvider>,
 ) -> Html<String> {
     let article = provider.show_article(&article_id).await;
-
-    // TODO: Link to /wiki/:id/edit
     let html_body = article.unwrap_or_else(|()| "Not found".to_string());
-    let html = render_html_from_markdown(&handlebars, &html_body);
-
+    let html = render_html_from_markdown(&config, &handlebars, &html_body);
     Html(html)
 }
 
@@ -139,14 +155,23 @@ async fn show_raw_article(
 async fn edit_article(
     Path(article_id): Path<String>,
     handlebars: Extension<Handlebars<'_>>,
+    Extension(config): Extension<WikiConfig>,
     Extension(provider): Extension<DynArticleProvider>,
 ) -> Html<String> {
     let article = provider.show_article(&article_id).await;
     let html_body = article.unwrap_or_else(|()| "Not found".to_string());
-    let html = render_html_from_markdown(&handlebars, &html_body);
+    let html = render_html_from_markdown(&config, &handlebars, &html_body);
     Html(html)
 }
 
 async fn stylesheet() -> Css<&'static str> {
     Css(include_str!("www/styles.css"))
+}
+
+async fn handle_not_found(
+    Extension(config): Extension<WikiConfig>,
+    Extension(handlebars): Extension<Handlebars<'_>>,
+) -> impl IntoResponse {
+    let html = render_html(&config, &handlebars, Some(&config.not_found_msg), None);
+    Html(html)
 }
